@@ -115,7 +115,73 @@ Inbox의 문서를 처리하다가 급한일이 생겨 다시 Inbox에 넣으면
 
 ## Transactional Inbox Pattern
 
-(TODO)
+> 메시지를 받자마자 바로 처리하지 않고, 먼저 Inbox 테이블에 저장한 뒤 별도 프로세스가 처리
+
+### 핵심 로직 처리 순서
+
+#### 방식 1: 즉시 처리 (간소화된 Inbox)
+
+1. 메시지 브로커에서 메시지 수신
+2. 트랜잭션 시작
+3. Inbox 테이블에 메시지 저장 (message_id 기준 중복 체크, Unique 제약)
+4. 비즈니스 로직 실행
+5. 트랜잭션 커밋
+6. 메시지 ACK 처리 (오프셋 커밋)
+
+#### 방식 2: 저장 후 별도 처리 (전통적 Inbox)
+
+1. 메시지 브로커에서 메시지 수신
+2. Inbox 테이블에 메시지 저장 (status: PENDING)
+3. 메시지 ACK 처리
+4. 별도 Worker가 Inbox에서 미처리 메시지 조회
+5. 비즈니스 로직 실행
+6. 처리 결과에 따라 상태 업데이트 (SUCCESS/FAILED)
+
+### 특징
+
+## Transactional Inbox 패턴
+
+---
+
+### 핵심 로직 처리 순서
+
+**방식 1: 즉시 처리 (간소화된 Inbox)**
+1. 메시지 브로커에서 메시지 수신
+2. 트랜잭션 시작
+3. Inbox 테이블에 메시지 저장 (message_id 기준 중복 체크, Unique 제약)
+4. 비즈니스 로직 실행
+5. 트랜잭션 커밋
+6. 메시지 ACK 처리 (오프셋 커밋)
+
+**방식 2: 저장 후 별도 처리 (전통적 Inbox)**
+1. 메시지 브로커에서 메시지 수신
+2. Inbox 테이블에 메시지 저장 (status: PENDING)
+3. 메시지 ACK 처리
+4. 별도 Worker가 Inbox에서 미처리 메시지 조회
+5. 비즈니스 로직 실행
+6. 처리 결과에 따라 상태 업데이트 (SUCCESS/FAILED)
+
+---
+
+### 특징
+
+| 구분 | 방식 1 (즉시 처리) | 방식 2 (저장 후 처리) |
+|------|-------------------|---------------------|
+| **구현 복잡도** | 낮음 (Worker 불필요) | 높음 (Worker 필요) |
+| **처리 지연** | 낮음 | 높음 (폴링 주기 의존) |
+| **재시도 제어** | 브로커에 의존 | 애플리케이션에서 제어 |
+| **status 컬럼** | 불필요 (존재 여부로 판단) | 필요 (PENDING → SUCCESS/FAILED) |
+
+- 메시지 id를 PK 또는 Unique 제약으로 설정하여 중복 메시지 방어
+- 동시 도착 시 DB Unique 제약으로 하나의 트랜잭션만 성공
+- 브로커에서 at-least-once delivery 보장 필요
+
+### 비고
+
+- 방식 1 주의사항
+  - 반드시 트랜잭션 커밋 후 ACK (순서 중요)
+  - ACK를 먼저 보내면 처리 실패 시 메시지 유실
+  - 중복 체크는 SELECT 조회가 아닌 Unique 제약에 의존해야 동시성 안전
 
 ## 참고
 
@@ -124,3 +190,7 @@ Inbox의 문서를 처리하다가 급한일이 생겨 다시 Inbox에 넣으면
 - https://microservices.io/patterns/data/transaction-log-tailing.html
 - https://inma.tistory.com/199
 - https://curiousjinan.tistory.com/entry/kafka-consumer-inbox-pattern
+- https://en.wikipedia.org/wiki/Inbox_and_outbox_pattern
+- https://inma.tistory.com/199
+- https://event-driven.io/en/outbox_inbox_patterns_and_delivery_guarantees_explained
+- https://softwaremill.com/microservices-101
